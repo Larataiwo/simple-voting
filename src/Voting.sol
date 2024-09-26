@@ -1,29 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-
 contract Voting {
-   error Voting__onlyOwner();
-   error Voting__notQualified();
-   error Voting__votingTimePassed();
-   error Voting__mustBeOlderThan18();
-   error Voting__alreadyVoted();
-   error Voting__invalidCandidateIndex();
+    error Voting__onlyOwner();
+    error Voting__VotingEnded();
+    error Voting__alreadyVoted();
+    error Voting__invalidCandidateIndex();
+    error Voting__NoCandidateAvailable();
 
-   event CandidateAdded(string name, string partyName);
-   event VoteCasted(address voter, uint256 candidateIndex);
-   event VotingEnded();
-
-    address public owner;
-    uint256 public totalVotes;
+    address private immutable i_owner;
     uint256 public immutable i_votingEnded;
-
+    uint256 public totalVotes;
 
     mapping(address => bool) public hasVoted;
-    mapping(address => bool) public authorizedVoter;
-    mapping(address => uint256) public qualifiedAge;
-
-
+    
     struct Candidate {
         string name;
         string partyName;
@@ -31,40 +21,29 @@ contract Voting {
     }
 
     // Mapping for candidates and counter for keeping track of candidates
-        mapping(uint256 => Candidate) public candidates;
-        uint256 public candidateCount;
+    mapping(uint256 => Candidate) public candidates;
+    uint256 public candidateCount;
 
-    
+    constructor(uint256 _votingDuration) {
+        i_owner = msg.sender;
+        i_votingEnded = block.timestamp + _votingDuration;
+    }
 
-   
-   constructor(uint256 _votingDuration) {
-    owner = msg.sender;
-    i_votingEnded = block.timestamp + _votingDuration;
-   }
+    event CandidateAdded(string name, string partyName);
+    event VoteCasted(address voter, uint256 candidateIndex);
 
-    ////////////////////////////////////////
-    ///////////////MODIFIERS///////////////
-    //////////////////////////////////////
 
     modifier onlyOwner() {
-        require(msg.sender == owner, Voting__onlyOwner());
+        require(msg.sender == i_owner, Voting__onlyOwner());
         _;
     }
 
-    modifier qualifiedVoter() {
-      require(authorizedVoter[msg.sender], Voting__notQualified());
-        _;
-    }
 
     modifier votingTime() {
-        require(block.timestamp < i_votingEnded, Voting__votingTimePassed());
+        require(block.timestamp < i_votingEnded, Voting__VotingEnded());
         _;
     }
 
-
-    //////////////////////////////////////////////
-    ///////////////SETTER FUNCTIONS///////////////
-    //////////////////////////////////////////////
 
     function addCandidate(string memory _name, string memory _partyName) public onlyOwner {
         candidates[candidateCount] = Candidate(_name, _partyName, 0);
@@ -74,15 +53,7 @@ contract Voting {
     }
 
 
-    function canVote(address user, uint256 age) public onlyOwner {
-        require(age >= 18, Voting__mustBeOlderThan18());
-        authorizedVoter[user] = true;
-        qualifiedAge[user] = age;
-    }
-
-
-
-    function vote(uint256 candidateIndex) public qualifiedVoter votingTime {
+    function vote(uint256 candidateIndex) public votingTime {
         require(!hasVoted[msg.sender], Voting__alreadyVoted());
         require(candidateIndex < candidateCount, Voting__invalidCandidateIndex());
 
@@ -91,59 +62,47 @@ contract Voting {
         totalVotes += 1;
 
         emit VoteCasted(msg.sender, candidateIndex);
+    }
 
-        if(i_votingEnded >= block.timestamp) {
-            endVoting();
+      function getWinner() public view returns (string memory winnerName, string memory winnerParty, uint256 winnerVoteCount) {
+        require(candidateCount > 0, Voting__NoCandidateAvailable());
+        
+        uint256 winningVoteCount = 0;
+        uint256 winningIndex = 0;
+
+        for (uint256 i = 0; i < candidateCount; i++) {
+            if (candidates[i].voteCount > winningVoteCount) {
+                winningVoteCount = candidates[i].voteCount;
+                winningIndex = i;
+            }
         }
-
+        Candidate memory winner = candidates[winningIndex];
+        return (winner.name, winner.partyName, winner.voteCount);
     }
 
 
-    function endVoting() internal {
-        emit VotingEnded();
-    }
-
-
-    /////////////////////////////////////////////
-    ///////////////GETTER FUNCTIONS///////////////
-    //////////////////////////////////////////////
-
-    function getCanditateIndex(uint256 index) 
-        public 
-        view 
-        returns(string memory, string memory, uint256)
-        {
+    function getCanditateIndex(uint256 index) public view returns (string memory, string memory, uint256) {
         require(index < candidateCount, Voting__invalidCandidateIndex());
         Candidate memory candidate = candidates[index];
         return (candidate.name, candidate.partyName, candidate.voteCount);
     }
 
-
-    function getCandidateCount() public view returns(uint256) {
+    function getCandidateCount() public view returns (uint256) {
         return candidateCount;
     }
 
-
-    function getRemainingVotingTime() public view returns(uint256) {
-        if(block.timestamp >= i_votingEnded) {
+    function getRemainingVotingTime() public view returns (uint256) {
+        if (block.timestamp >= i_votingEnded) {
             return 0;
         }
-            return (i_votingEnded - block.timestamp);
+        return (i_votingEnded - block.timestamp);
     }
 
-
-    function getTotalVotes() public view returns(uint256) {
+    function getTotalVotes() public view returns (uint256) {
         return totalVotes;
     }
 
-
-
+    function getVotePerCandidate(uint256 candidateIndex) public view returns (uint256) {
+        return candidates[candidateIndex].voteCount;
+    }
 }
-
- 
-
-
-
-
-
-
